@@ -1,0 +1,35 @@
+version: "3"
+
+tasks:
+
+  lint:
+    desc: Run linters using golangci-lint
+    cmds:
+      - golangci-lint run --config .golangci.yaml
+    silent: true
+
+  build:
+    desc: build project
+    dir: cmd/gophermart
+    cmds:
+      - go build
+      - echo "Doner"
+    silent: true
+
+  run:
+    desc: run project
+    cmds:
+      - go run cmd/gophermart/main.go
+    silent: true
+
+  test:
+    desc: build and run tests
+    deps:
+      - build
+    cmds:
+      - echo no_tests
+
+  accrual:
+    desc: run accrual_linux_amd64
+    cmds:
+      - ./cmd/accrual/accrual_linux_amd64
