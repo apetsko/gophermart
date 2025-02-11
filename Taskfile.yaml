@@ -33,3 +33,9 @@ tasks:
     desc: run accrual_linux_amd64
     cmds:
       - ./cmd/accrual/accrual_linux_amd64
+
+
+  update-template:
+    desc: update template
+    cmds:
+      - git fetch template && git checkout template/master .github
