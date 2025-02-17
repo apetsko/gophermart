@@ -39,8 +39,8 @@ func SetupRouter(handler *URLHandler) *chi.Mux {
 	r.Use(middleware.Recoverer)
 
 	r.Route("/api/user", func(r chi.Router) {
-		r.Post("/register", RegisterHandler(handler.storage, handler.logger)) // регистрация пользователя;
-		//r.Post("/login", handler.Login)            // аутентификация пользователя;
+		r.Post("/register", RegisterHandler(handler)) // регистрация пользователя;
+		r.Post("/login", LoginHandler(handler))       // аутентификация пользователя;
 		//r.Get("/withdrawals", handler.Withdrawals) //  получение информации о выводе средств с накопительного счёта пользователем.
 		//
 		//r.Post("/orders", handler.AddOrder) //  загрузка пользователем номера заказа для расчёта;

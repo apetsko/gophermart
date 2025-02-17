@@ -1,21 +1,24 @@
 package handlers
 
 import (
-	"database/sql"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
-	"github.com/apetsko/gophermart/internal/logging"
+	"github.com/apetsko/gophermart/internal/auth"
 	"github.com/apetsko/gophermart/internal/models"
-	"github.com/apetsko/gophermart/internal/storage/postgres"
 	"github.com/go-playground/validator/v10"
+	"golang.org/x/crypto/bcrypt"
 )
 
-func RegisterHandler(st *postgres.Storage, logger *logging.ZapLogger) func(http.ResponseWriter, *http.Request) {
+func RegisterHandler(h *URLHandler) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		defer cancel()
 		defer r.Body.Close()
 
 		b, err := io.ReadAll(r.Body)
@@ -34,32 +37,45 @@ func RegisterHandler(st *postgres.Storage, logger *logging.ZapLogger) func(http.
 		validate := validator.New()
 		if err = validate.Struct(user); err != nil {
 			validationErrors := err.(validator.ValidationErrors)
-			logger.Info(fmt.Sprintf("%v", validationErrors))
+			h.logger.Info(fmt.Sprintf("%v", validationErrors))
 			http.Error(w, "", http.StatusBadRequest)
 			return
 		}
 
-		err = st.AddUser(user.Login, user.Password)
+		hash, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				msg := "user already exists"
-				logger.Errorw(msg, "error", err)
-				http.Error(w, msg, http.StatusConflict)
+			http.Error(w, "", http.StatusInternalServerError)
+		}
+
+		u := &models.UserEntry{
+			ID:           0,
+			Username:     user.Login,
+			PasswordHash: string(hash),
+		}
+
+		userID, err := h.storage.AddUser(ctx, u)
+		if err != nil {
+			if errors.Is(err, models.ErrUserExists) {
+				h.logger.Error(err.Error())
+				http.Error(w, err.Error(), http.StatusConflict)
 				return
 			}
+			h.logger.Error("failed to add user", "error", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
 		}
-		logger.Info("registered user", "user", user)
+
+		if err = auth.SetUserIDCookie(w, userID, h.secret); err != nil {
+			h.logger.Error(err.Error())
+			http.Error(w, "", http.StatusInternalServerError)
+		}
+
+		h.logger.Info("registered user", "user", user.Login)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, err = w.Write(b)
-		if err != nil {
-			return
+		if err = json.NewEncoder(w).Encode(user); err != nil {
+			h.logger.Error("failed to encode response", "error", err)
 		}
-		//TODO CHECK DB USER ACCOUNT
-		//
-		//IF EXIST 409
-		//ADD IF NOT EXIST 200
-		//INTERNAL ELSE
 	}
 }
