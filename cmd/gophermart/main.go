@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/apetsko/gophermart/internal/accrual"
 	"github.com/apetsko/gophermart/internal/config"
 	"github.com/apetsko/gophermart/internal/handlers"
 	"github.com/apetsko/gophermart/internal/storage"
@@ -24,7 +25,7 @@ func main() {
 		logger.Fatal(err.Error())
 	}
 
-	st, err := storage.Init(cfg.DatabaseDSN, cfg.FileStoragePath, logger)
+	st, err := storage.Init(cfg.DatabaseURI, logger)
 	if err != nil || st == nil {
 		logger.Fatal(err.Error())
 	}
@@ -36,14 +37,18 @@ func main() {
 		}
 	}(*st)
 
-	handler := handlers.New(cfg.BaseURL, st, logger, cfg.Secret)
+	handler := handlers.New(st, logger)
 
 	//go storage.StartBatchDeleteProcessor(context.Background(), st, handler.ToDelete, logger)
 
 	router := handlers.SetupRouter(handler)
-	s := server.New(cfg.Host, router)
+	s := server.New(cfg.RunAddr, router)
 
-	logger.Info("running server on " + cfg.Host)
+	if err := accrual.InitAccrualForTests(logger); err != nil {
+		logger.Fatal(err.Error())
+	}
+
+	logger.Info("running server on " + cfg.RunAddr)
 	if err := s.ListenAndServe(); err != nil {
 		logger.Fatal(err.Error())
 	}
