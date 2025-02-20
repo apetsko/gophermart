@@ -65,7 +65,7 @@ func RegisterHandler(h *URLHandler) func(http.ResponseWriter, *http.Request) {
 			return
 		}
 
-		if err = auth.SetUserIDCookie(w, userID, h.secret); err != nil {
+		if err = auth.CookieSetUserID(w, userID, h.secret); err != nil {
 			h.logger.Error(err.Error())
 			http.Error(w, "", http.StatusInternalServerError)
 		}

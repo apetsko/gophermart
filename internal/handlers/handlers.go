@@ -10,19 +10,16 @@ import (
 )
 
 type URLHandler struct {
-	baseURL string
 	storage *postgres.Storage
 	secret  string
 	//ToDelete chan models.BatchDeleteRequest
 	logger *logging.ZapLogger
 }
 
-func New(baseURL string, s *postgres.Storage, l *logging.ZapLogger, secret string) *URLHandler {
+func New(s *postgres.Storage, l *logging.ZapLogger) *URLHandler {
 	return &URLHandler{
-		baseURL: baseURL,
 		storage: s,
 		logger:  l,
-		secret:  secret,
 		//ToDelete: make(chan models.BatchDeleteRequest),
 	}
 }
@@ -41,13 +38,16 @@ func SetupRouter(handler *URLHandler) *chi.Mux {
 	r.Route("/api/user", func(r chi.Router) {
 		r.Post("/register", RegisterHandler(handler)) // регистрация пользователя;
 		r.Post("/login", LoginHandler(handler))       // аутентификация пользователя;
-		//r.Get("/withdrawals", handler.Withdrawals) //  получение информации о выводе средств с накопительного счёта пользователем.
-		//
-		//r.Post("/orders", handler.AddOrder) //  загрузка пользователем номера заказа для расчёта;
-		//r.Get("/orders", handler.GetOrder)  // получение списка загруженных пользователем номеров заказов, статусов их обработки и информации о начислениях;
+		// TODO@@@@@@@@@@
+		// TODO@@@@@@@@@@
+		// TODO@@@@@@@@@@
+		// TODO@@@@@@@@@@
+		r.Post("/orders", AddOrderHandler(handler))  //  загрузка пользователем номера заказа для расчёта;
+		r.Get("/orders", ListOrdersHandler(handler)) // получение списка загруженных пользователем номеров заказов, статусов их обработки и информации о начислениях;
 		//
 		//r.Get("/balance", handler.Balance)            // получение текущего баланса счёта баллов лояльности пользователя;
 		//r.Post("/balance/withdraw", handler.Withdraw) // запрос на списание баллов с накопительного счёта в счёт оплаты нового заказа;
+		//r.Get("/withdrawals", handler.Withdrawals) //  получение информации о выводе средств с накопительного счёта пользователем.
 	})
 
 	return r

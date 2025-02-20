@@ -57,12 +57,12 @@ func LoginHandler(h *URLHandler) func(http.ResponseWriter, *http.Request) {
 			return
 		}
 
-		err = auth.SetUserIDCookie(w, ue.ID, h.secret)
+		err = auth.CookieSetUserID(w, ue.ID, h.secret)
 		if err != nil {
 			return
 		}
 
-		h.logger.Info("registered user", "user", user)
+		h.logger.Info("registered user", "user", user.Login)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
