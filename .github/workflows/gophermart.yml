@@ -7,6 +7,7 @@ on:
     branches:
       - main
       - master
+      - dev
 
 jobs:
 
@@ -30,12 +31,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
 
-      - name: Download autotests binaries
+      - name: Download autotests binaries gophermarttest
         uses: robinraju/release-downloader@v1.8
         with:
           repository: Yandex-Practicum/go-autotests
           latest: true
-          fileName: "*"
+          fileName: "gophermarttest"
+          out-file-path: .tools
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download autotests binaries random
+        uses: robinraju/release-downloader@v1.8
+        with:
+          repository: Yandex-Practicum/go-autotests
+          latest: true
+          fileName: "random"
           out-file-path: .tools
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -52,13 +62,18 @@ jobs:
 
       - name: Test
         run: |
+          randomPort=$(random unused-port)
+          export GOPHERMART_RUN_ADDRESS='localhost:8080'
+          export GOPHERMART_DATABASE_URI='postgresql://postgres:postgres@postgres/praktikum?sslmode=disable'
+          export ACCRUAL_SYSTEM_ADDRESS='http://localhost:${randomPort}'
+          export GOPHERMART_SECRET='42'
           gophermarttest \
             -test.v -test.run=^TestGophermart$ \
             -gophermart-binary-path=cmd/gophermart/gophermart \
             -gophermart-host=localhost \
             -gophermart-port=8080 \
-            -gophermart-database-uri="postgresql://postgres:postgres@postgres/praktikum?sslmode=disable" \
+            -gophermart-database-uri="${GOPHERMART_DATABASE_URI}" \
             -accrual-binary-path=cmd/accrual/accrual_linux_amd64 \
             -accrual-host=localhost \
-            -accrual-port=$(random unused-port) \
-            -accrual-database-uri="postgresql://postgres:postgres@postgres/praktikum?sslmode=disable"
+            -accrual-port=${randomPort} \
+            -accrual-database-uri="${GOPHERMART_DATABASE_URI}"

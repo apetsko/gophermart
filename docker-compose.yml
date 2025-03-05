@@ -1,0 +1,58 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    networks:
+      - praktikum
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT}:8080"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  gophermart:
+    build:
+      context: .
+      dockerfile: Dockerfile.gophermart
+    image: apetskom/gophermart
+    networks:
+      - praktikum
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      GOPHERMART_PORT: ${GOPHERMART_PORT}
+      GOPHERMART_RUN_ADDRESS: ${GOPHERMART_RUN_ADDRESS}
+      GOPHERMART_DATABASE_URI: ${GOPHERMART_DATABASE_URI}
+      ACCRUAL_SYSTEM_ADDRESS: ${ACCRUAL_SYSTEM_ADDRESS}
+      GOPHERMART_SECRET: ${GOPHERMART_SECRET}
+    ports:
+      - "${GOPHERMART_PORT}:8080"
+
+  accrual:
+    build:
+      context: .
+      dockerfile: Dockerfile.accrual
+    image: apetskom/accrual
+    networks:
+      - praktikum
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      ACCRUAL_PORT: ${ACCRUAL_PORT}
+      ACCRUAL_RUN_ADDRESS: ${ACCRUAL_RUN_ADDRESS}
+      ACCRUAL_DATABASE_URI: ${ACCRUAL_DATABASE_URI}
+    ports:
+      - "${ACCRUAL_PORT}:8080"
+
+
+networks:
+  praktikum:
+    driver: bridge
+
+volumes:
+  postgres_data:

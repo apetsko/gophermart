@@ -1,0 +1,145 @@
+version: "3"
+
+tasks:
+
+  lint:
+    desc: Run linters using golangci-lint
+    cmds:
+      - golangci-lint run --config .golangci.yaml
+    silent: true
+
+  build:
+    desc: build project
+    dir: cmd/gophermart
+    cmds:
+      - go build -o ./bin
+      - echo "Built done"
+    silent: true
+
+  run:
+    desc: run project
+    cmds:
+      - |
+       export GOPHERMART_RUN_ADDRESS='localhost:8080' \
+       && export GOPHERMART_DATABASE_URI='postgres://postgres:postgres@localhost:5432/praktikum?sslmode=disable' \
+       && export ACCRUAL_SYSTEM_ADDRESS='http://localhost:7070' \
+       && export GOPHERMART_SECRET='42' \
+       && wgo run cmd/gophermart/main.go
+    silent: true
+
+
+  accrual:
+    desc: run accrual_linux_amd64
+    cmds:
+      - cmd/accrual/accrual_linux_amd64 -a=localhost:7070 -d="postgres://postgres:postgres@localhost:5432/praktikum?sslmode=disable"
+
+  update-template:
+    desc: update template
+    cmds:
+      - git fetch template && git checkout template/master .github
+
+  download-yptests:
+    desc: "Скачать последние версии gophermarttest и statictest в ./yptests/"
+    cmds:
+      - |
+        LATEST_VERSION=$(curl -sL https://api.github.com/repos/Yandex-Practicum/go-autotests/releases/latest | grep '"tag_name"' | cut -d '"' -f 4)
+        BASE_URL="https://github.com/Yandex-Practicum/go-autotests/releases/download/${LATEST_VERSION}"
+        
+        mkdir -p ./yptests
+        
+        for FILE in gophermarttest statictest; do
+          URL="${BASE_URL}/${FILE}"
+          echo "Скачиваю $URL в ./yptests/"
+          curl -L -o "./yptests/${FILE}" "$URL"
+          chmod +x "./yptests/${FILE}"
+        done
+    silent: true
+
+  check-yptests:
+    desc: "Проверить наличие файлов gophermarttest и statictest"
+    cmds:
+      - |
+        echo "📂 Проверяем папку ./yptests/"
+        if [ ! -d "./yptests" ]; then
+          echo "❌ Папки ./yptests нет! Запускаем скачивание..."
+          task download-yptests
+          exit 0
+        fi
+        
+        MISSING=0
+        for FILE in gophermarttest statictest; do
+          FILE_PATH="./yptests/${FILE}"
+          echo "🔍 Проверяем файл: $FILE_PATH"
+          if [ ! -f "$FILE_PATH" ]; then
+            echo "❌ Файл $FILE отсутствует!"
+            MISSING=1
+          elif [ ! -s "$FILE_PATH" ]; then
+            echo "⚠️ Файл $FILE есть, но он пуст!"
+            MISSING=1
+          else
+            echo "✅ Файл $FILE найден"
+          fi
+        done
+        
+        if [ $MISSING -eq 1 ]; then
+          echo "🔄 Запускаем скачивание недостающих файлов..."
+          task download-yptests
+        else
+          echo "✅ Все файлы на месте"
+        fi
+    silent: true
+
+
+  statictest:
+    desc: statictest YP
+    deps:
+      - check-yptests
+    cmds:
+      - go vet -vettool=./yptests/statictest ./...
+
+  gtest:
+    desc: gophermart test YP
+    deps:
+      - build
+      - check-yptests
+    cmds:
+      - |
+        export GOPHERMART_RUN_ADDRESS='localhost:8080' \
+        && export GOPHERMART_DATABASE_URI='postgres://postgres:postgres@localhost:5432/praktikum?sslmode=disable' \
+        && export ACCRUAL_SYSTEM_ADDRESS='http://localhost:7070' \
+        && export GOPHERMART_SECRET='42' \
+        && ./yptests/gophermarttest \
+          -test.v -test.run=^TestGophermart$ \
+          -gophermart-binary-path=cmd/gophermart/bin/gophermart \
+          -gophermart-host=localhost \
+          -gophermart-port=8080 \
+          -gophermart-database-uri="${GOPHERMART_DATABASE_URI}" \
+          -accrual-binary-path=cmd/accrual/accrual_linux_amd64 \
+          -accrual-host=localhost \
+          -accrual-port=7070 \
+          -accrual-database-uri="${GOPHERMART_DATABASE_URI}"
+
+  test:
+    desc: run tests
+    cmds:
+      - go clean -testcache
+      - go test ./...
+
+
+
+## DOCKER
+## DOCKER
+## DOCKER
+
+  dockerup:
+    desc: run project with docker compose
+    cmds:
+      - docker compose up -d
+
+
+  dockerdown:
+    desc: stop docker compose
+    cmds:
+      - docker compose down -v
+
+
