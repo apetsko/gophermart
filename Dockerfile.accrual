@@ -1,0 +1,5 @@
+FROM debian:bullseye-slim
+WORKDIR /app
+COPY cmd/accrual/accrual_linux_amd64 /app/accrual
+RUN chmod +x /app/accrual
+CMD ["/app/accrual"]
