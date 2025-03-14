@@ -4,7 +4,7 @@ import (
 	"context"
 	"log"
 
-	"github.com/apetsko/gophermart/internal/accrual"
+	"github.com/apetsko/gophermart/internal/clients/accrual"
 	"github.com/apetsko/gophermart/internal/config"
 	"github.com/apetsko/gophermart/internal/handlers"
 	"github.com/apetsko/gophermart/internal/storage/postgres"
@@ -34,7 +34,7 @@ func main() {
 
 	defer func() {
 		if err := st.Close(); err != nil {
-			logger.Fatal("Failed to close storage:", err)
+			logger.Error("Failed to close storage:", err)
 		}
 	}()
 
@@ -45,10 +45,8 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	workerCount := 1
-	if err := accrual.ProcessAccrual(ctx, st.DB, cfg.Accrual, workerCount, logger); err != nil {
-		logger.Fatal(err.Error())
-	}
+	workerCount := 5
+	accrual.ProcessAccrual(ctx, st.DB, cfg.Accrual, workerCount, logger)
 
 	logger.Info("Running server on " + cfg.RunAddr)
 

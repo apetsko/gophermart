@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -42,26 +43,31 @@ func WithdrawHandler(h *URLHandler) func(http.ResponseWriter, *http.Request) {
 			return
 		}
 
-		var wd models.Withdraw
-		err = json.Unmarshal(b, &wd)
+		var wr models.WithdrawRequest
+		err = json.Unmarshal(b, &wr)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
-		if err = utils.ValidateStruct(wd); err != nil {
+		if err = utils.ValidateStruct(wr); err != nil {
 			h.Logger.Error(err.Error())
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
-		h.Logger.Debug(fmt.Sprintf("Withdraw: %v", wd))
-		if ok := utils.ValidateLuhnAlgorithm(wd.Order); !ok {
+		h.Logger.Debug(fmt.Sprintf("Withdraw: %v", wr))
+		if ok := utils.ValidateLuhnAlgorithm(wr.Order); !ok {
 			w.WriteHeader(http.StatusUnprocessableEntity)
 			return
 		}
+		var kopecks float64 = 100
+		wd := models.Withdraw{
+			Order:    wr.Order,
+			SumMinor: int64(math.Round(wr.Sum * kopecks)),
+		}
 
-		ub, err := h.Storage.Withdraw(ctx, userID, wd, *h.Logger)
+		ubMinor, err := h.Storage.Withdraw(ctx, userID, wd, *h.Logger)
 		if err != nil {
 			status := http.StatusBadRequest
 
@@ -74,9 +80,14 @@ func WithdrawHandler(h *URLHandler) func(http.ResponseWriter, *http.Request) {
 			return
 		}
 
+		ubr := models.UserBalanceResponse{
+			Current:   float64(ubMinor.CurrentMinor) / 100.0,
+			Withdrawn: float64(ubMinor.WithdrawnMinor) / 100.0,
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		if err = json.NewEncoder(w).Encode(*ub); err != nil {
+		if err = json.NewEncoder(w).Encode(ubr); err != nil {
 			h.Logger.Error("failed to encode response", "error", err)
 		}
 	}

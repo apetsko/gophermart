@@ -131,7 +131,7 @@ func (p *Storage) ListOrders(ctx context.Context, userID int64) (ee []models.Use
 		return nil, err
 	}
 
-	const query = "SELECT order_number, status, accrual, uploaded_at FROM orders WHERE user_id = $1"
+	const query = "SELECT order_number, status, accrual_minor, uploaded_at FROM orders WHERE user_id = $1"
 
 	rows, err := p.DB.Query(ctx, query, userID)
 	if err != nil {
@@ -144,7 +144,7 @@ func (p *Storage) ListOrders(ctx context.Context, userID int64) (ee []models.Use
 
 	for rows.Next() {
 		var entry = new(models.UserOrderEntry)
-		if err := rows.Scan(&entry.Number, &entry.Status, &entry.Accrual, &entry.UploadedAt); err != nil {
+		if err := rows.Scan(&entry.Number, &entry.Status, &entry.AccrualMinor, &entry.UploadedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan row: %w", err)
 		}
 		ee = append(ee, *entry)
@@ -170,10 +170,9 @@ func (p *Storage) Balance(ctx context.Context, id int64) (*models.UserBalance, e
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	const query = "SELECT current, withdrawn FROM users WHERE id = $1"
-
-	b := new(models.UserBalance)
-	if err := p.DB.QueryRow(ctx, query, id).Scan(&b.Current, &b.Withdrawn); err != nil {
+	const query = "SELECT current_minor, withdrawn_minor FROM users WHERE id = $1"
+	var b = new(models.UserBalance)
+	if err := p.DB.QueryRow(ctx, query, id).Scan(&b.CurrentMinor, &b.WithdrawnMinor); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, models.ErrUserNotFound
 		}
@@ -183,7 +182,6 @@ func (p *Storage) Balance(ctx context.Context, id int64) (*models.UserBalance, e
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-
 	return b, nil
 }
 
@@ -200,32 +198,32 @@ func (p *Storage) Withdraw(ctx context.Context, userID int64, wd models.Withdraw
 		}
 	}()
 
-	const getBalance = `SELECT current FROM users WHERE id = $1;`
-	var balance float64
-	err = tx.QueryRow(ctx, getBalance, userID).Scan(&balance)
+	const getBalance = `SELECT current_minor FROM users WHERE id = $1;`
+	var balanceMinor int64
+	err = tx.QueryRow(ctx, getBalance, userID).Scan(&balanceMinor)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get balance: %w", err)
 	}
 
-	if balance < wd.Sum {
+	if balanceMinor < wd.SumMinor {
 		return nil, models.ErrInsufficientFunds
 	}
 
 	const addToWithdrawals = `
-		INSERT INTO withdrawals (user_id, order_number, sum, processed_at)
+		INSERT INTO withdrawals (user_id, order_number, sum_minor, processed_at)
 		VALUES ($1, $2, $3, NOW());`
-	_, err = tx.Exec(ctx, addToWithdrawals, userID, wd.Order, wd.Sum)
+	_, err = tx.Exec(ctx, addToWithdrawals, userID, wd.Order, wd.SumMinor)
 	if err != nil {
 		return nil, fmt.Errorf("failed to insert withdrawal: %w", err)
 	}
 
 	const decreaseBalance = `
 		UPDATE users 
-		SET current = current - $2, withdrawn = withdrawn + $2 
+		SET current_minor = users.current_minor - $2, withdrawn_minor = users.withdrawn_minor + $2 
 		WHERE id = $1 
-		RETURNING current, withdrawn;`
+		RETURNING current_minor, withdrawn_minor;`
 	b := new(models.UserBalance)
-	err = tx.QueryRow(ctx, decreaseBalance, userID, wd.Sum).Scan(&b.Current, &b.Withdrawn)
+	err = tx.QueryRow(ctx, decreaseBalance, userID, wd.SumMinor).Scan(&b.CurrentMinor, &b.WithdrawnMinor)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update balance: %w", err)
 	}
@@ -243,7 +241,7 @@ func (p *Storage) Withdrawals(ctx context.Context, userID int64) ([]models.Withd
 	}
 
 	const withdrawal = `
-		SELECT order_number, sum, processed_at  
+		SELECT order_number, sum_minor, processed_at  
 		FROM withdrawals WHERE user_id = $1
 		`
 
@@ -257,7 +255,7 @@ func (p *Storage) Withdrawals(ctx context.Context, userID int64) ([]models.Withd
 
 	for rows.Next() {
 		var w models.Withdraw
-		if err := rows.Scan(&w.Order, &w.Sum, &w.ProcessedAt); err != nil {
+		if err := rows.Scan(&w.Order, &w.SumMinor, &w.ProcessedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan row: %w", err)
 		}
 		ww = append(ww, w)

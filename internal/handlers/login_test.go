@@ -9,6 +9,7 @@ import (
 
 	"github.com/apetsko/gophermart/internal/handlers"
 	"github.com/apetsko/gophermart/internal/logging"
+	"github.com/apetsko/gophermart/internal/mocks"
 	"github.com/apetsko/gophermart/internal/models"
 	"github.com/apetsko/gophermart/internal/utils"
 	"github.com/stretchr/testify/assert"
@@ -17,7 +18,7 @@ import (
 )
 
 func TestLoginHandler(t *testing.T) {
-	mockStorage := new(MockStorage)
+	mockStorage := new(mocks.Storage) // Используем новый мок
 	logger, _ := logging.NewLogger(zapcore.DebugLevel)
 	h := &handlers.URLHandler{
 		Logger:  logger,
@@ -28,7 +29,7 @@ func TestLoginHandler(t *testing.T) {
 	cases := []struct {
 		name           string
 		requestBody    models.User
-		mockResponse   models.UserEntry
+		mockResponse   *models.UserEntry
 		mockError      error
 		expectedStatus int
 	}{
@@ -46,28 +47,28 @@ func TestLoginHandler(t *testing.T) {
 		{
 			name:           "Wrong password",
 			requestBody:    models.User{Login: "user", Password: "wrongpass"},
-			mockResponse:   models.UserEntry{ID: 1, Username: "user", PasswordHash: "correctpass"},
+			mockResponse:   &models.UserEntry{ID: 1, Username: "user", PasswordHash: "correctpass", Balance: 0.0},
 			expectedStatus: http.StatusUnauthorized,
 		},
 		{
 			name:           "Successful login",
 			requestBody:    models.User{Login: "user", Password: "correctpass"},
-			mockResponse:   models.UserEntry{ID: 1, Username: "user", PasswordHash: "correctpass"},
+			mockResponse:   &models.UserEntry{ID: 1, Username: "user", PasswordHash: "correctpass", Balance: 0.0},
 			expectedStatus: http.StatusOK,
 		},
 	}
 
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.mockResponse.PasswordHash != "" {
+			if tt.mockResponse != nil && tt.mockResponse.PasswordHash != "" {
 				phash, _ := utils.HashPassword(tt.mockResponse.PasswordHash)
 				tt.mockResponse.PasswordHash = string(phash)
 			}
 			mockStorage.On("GetUser", mock.Anything, tt.requestBody.Login).Return(tt.mockResponse, tt.mockError)
 
 			body, _ := json.Marshal(tt.requestBody)
-			req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewReader(body))
 			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/api/user/login", bytes.NewReader(body))
 			handler := handlers.LoginHandler(h)
 			handler(w, req)
 

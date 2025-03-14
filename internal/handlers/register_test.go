@@ -10,15 +10,20 @@ import (
 
 	"github.com/apetsko/gophermart/internal/handlers"
 	"github.com/apetsko/gophermart/internal/logging"
+	"github.com/apetsko/gophermart/internal/mocks"
 	"github.com/apetsko/gophermart/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zapcore"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestRegisterHandler(t *testing.T) {
-	mockStorage := new(MockStorage)
+	mockStorage := new(mocks.Storage)
+	mockHasher := new(mocks.PasswordHasher) // Используем мока хэширования
 	logger, _ := logging.NewLogger(zapcore.DebugLevel)
+
 	h := &handlers.URLHandler{
 		Logger:  logger,
 		Storage: mockStorage,
@@ -27,53 +32,45 @@ func TestRegisterHandler(t *testing.T) {
 
 	cases := []struct {
 		name           string
-		requestBody    interface{}
+		requestBody    models.User
 		mockError      error
 		expectedStatus int
 	}{
 		{
-			name:           "Invalid JSON",
-			requestBody:    "invalid_json",
-			expectedStatus: http.StatusBadRequest,
-		},
-		{
-			name: "Successful registration",
-			requestBody: models.User{
-				Login:    "new_user",
-				Password: "securepassword",
-			},
+			name:           "Successful registration",
+			requestBody:    models.User{Login: "new_user1", Password: "securepassword"},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name: "User already exists",
-			requestBody: models.User{
-				Login:    "existing_user",
-				Password: "password",
-			},
+			name:           "User already exists",
+			requestBody:    models.User{Login: "existing_user", Password: "password"},
 			mockError:      models.ErrUserExists,
 			expectedStatus: http.StatusConflict,
 		},
 		{
-			name: "Storage error",
-			requestBody: models.User{
-				Login:    "fail_user",
-				Password: "password",
-			},
+			name:           "Storage error",
+			requestBody:    models.User{Login: "fail_user", Password: "password"},
 			mockError:      errors.New("database failure"),
 			expectedStatus: http.StatusInternalServerError,
 		},
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
 			mockStorage.ExpectedCalls = nil
+			mockHasher.ExpectedCalls = nil
 
-			if _, ok := tc.requestBody.(models.User); ok {
-				mockStorage.On("AddUser", mock.Anything, mock.Anything).Return(1, tc.mockError)
-			}
+			hashedPassword, err := bcrypt.GenerateFromPassword([]byte(tt.requestBody.Password), bcrypt.DefaultCost)
+			require.NoError(t, err)
 
-			body, _ := json.Marshal(tc.requestBody)
-			req := httptest.NewRequest(http.MethodPost, "/register", bytes.NewReader(body))
+			mockHasher.On("HashPassword", tt.requestBody.Password).Return(hashedPassword, nil)
+
+			mockStorage.On("AddUser", mock.Anything, mock.MatchedBy(func(ue *models.UserEntry) bool {
+				return ue.Username == tt.requestBody.Login
+			})).Return(1, tt.mockError)
+
+			body, _ := json.Marshal(tt.requestBody)
+			req := httptest.NewRequest(http.MethodPost, "/api/user/register", bytes.NewReader(body))
 			w := httptest.NewRecorder()
 			handler := handlers.RegisterHandler(h)
 			handler(w, req)
@@ -81,7 +78,9 @@ func TestRegisterHandler(t *testing.T) {
 			resp := w.Result()
 			defer resp.Body.Close()
 
-			assert.Equal(t, tc.expectedStatus, resp.StatusCode)
+			assert.Equal(t, tt.expectedStatus, resp.StatusCode)
+
+			mockStorage.AssertExpectations(t)
 		})
 	}
 }

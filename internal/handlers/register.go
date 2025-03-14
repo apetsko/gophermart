@@ -46,7 +46,6 @@ func RegisterHandler(h *URLHandler) func(http.ResponseWriter, *http.Request) {
 		}
 
 		u := &models.UserEntry{
-			ID:           0,
 			Username:     user.Login,
 			PasswordHash: string(hash),
 		}
@@ -72,8 +71,5 @@ func RegisterHandler(h *URLHandler) func(http.ResponseWriter, *http.Request) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		if err = json.NewEncoder(w).Encode(user); err != nil {
-			h.Logger.Error("failed to encode response", "error", err)
-		}
 	}
 }

@@ -63,8 +63,5 @@ func LoginHandler(h *URLHandler) func(http.ResponseWriter, *http.Request) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		if _, err = w.Write(b); err != nil {
-			h.Logger.Error(err.Error())
-		}
 	}
 }

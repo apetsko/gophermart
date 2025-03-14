@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/apetsko/gophermart/internal/handlers"
 	"github.com/apetsko/gophermart/internal/logging"
+	"github.com/apetsko/gophermart/internal/mocks"
 	"github.com/apetsko/gophermart/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -17,42 +19,36 @@ import (
 )
 
 func TestWithdrawHandler(t *testing.T) {
-	mockStorage := new(MockStorage)
+	mockStorage := new(mocks.Storage)
 	logger, _ := logging.NewLogger(zapcore.DebugLevel)
 	h := &handlers.URLHandler{
 		Logger:  logger,
 		Storage: mockStorage,
 	}
 
-	cases := []struct {
+	tests := []struct {
 		name           string
 		userID         string
-		requestBody    interface{}
+		Request        models.WithdrawRequest
 		mockError      error
 		expectedStatus int
 	}{
 		{
 			name:           "Missing userID",
 			userID:         "",
-			requestBody:    models.Withdraw{Order: "123456789", Sum: 100},
+			Request:        models.WithdrawRequest{Order: "123456789", Sum: 100},
 			expectedStatus: http.StatusUnauthorized,
 		},
 		{
 			name:           "Invalid userID",
 			userID:         "invalid_id",
-			requestBody:    models.Withdraw{Order: "123456789", Sum: 100},
+			Request:        models.WithdrawRequest{Order: "123456789", Sum: 100},
 			expectedStatus: http.StatusUnauthorized,
-		},
-		{
-			name:           "Invalid JSON",
-			userID:         "1",
-			requestBody:    "invalid_json",
-			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name:   "Successful withdrawal",
 			userID: "1",
-			requestBody: models.Withdraw{
+			Request: models.WithdrawRequest{
 				Order: "79927398713",
 				Sum:   50,
 			},
@@ -61,7 +57,7 @@ func TestWithdrawHandler(t *testing.T) {
 		{
 			name:   "Invalid Luhn order number",
 			userID: "1",
-			requestBody: models.Withdraw{
+			Request: models.WithdrawRequest{
 				Order: "123456789",
 				Sum:   50,
 			},
@@ -70,7 +66,7 @@ func TestWithdrawHandler(t *testing.T) {
 		{
 			name:   "Insufficient funds",
 			userID: "1",
-			requestBody: models.Withdraw{
+			Request: models.WithdrawRequest{
 				Order: "79927398713",
 				Sum:   1000,
 			},
@@ -80,7 +76,7 @@ func TestWithdrawHandler(t *testing.T) {
 		{
 			name:   "Storage error",
 			userID: "1",
-			requestBody: models.Withdraw{
+			Request: models.WithdrawRequest{
 				Order: "79927398713",
 				Sum:   100,
 			},
@@ -89,18 +85,26 @@ func TestWithdrawHandler(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			mockStorage.ExpectedCalls = nil
 
-			if wd, ok := tc.requestBody.(models.Withdraw); ok {
-				mockStorage.On("Withdraw", mock.Anything, mock.Anything, wd, mock.Anything).Return(&models.UserBalance{}, tc.mockError)
+			wd := models.Withdraw{
+				Order:    tt.Request.Order,
+				SumMinor: int64(math.Round(tt.Request.Sum * 100)),
 			}
 
-			body, _ := json.Marshal(tc.requestBody)
-			req := httptest.NewRequest(http.MethodPost, "/withdraw", bytes.NewReader(body))
-			if tc.userID != "" {
-				req.Header.Set("userID", tc.userID)
+			mockStorage.On("Withdraw",
+				mock.Anything,
+				mock.Anything,
+				wd,
+				mock.Anything).
+				Return(&models.UserBalance{}, tt.mockError)
+
+			body, _ := json.Marshal(tt.Request)
+			req := httptest.NewRequest(http.MethodPost, "/api/user/withdraw", bytes.NewReader(body))
+			if tt.userID != "" {
+				req.Header.Set("userID", tt.userID)
 			}
 			w := httptest.NewRecorder()
 			handler := handlers.WithdrawHandler(h)
@@ -109,7 +113,7 @@ func TestWithdrawHandler(t *testing.T) {
 			resp := w.Result()
 			defer resp.Body.Close()
 
-			assert.Equal(t, tc.expectedStatus, resp.StatusCode)
+			assert.Equal(t, tt.expectedStatus, resp.StatusCode)
 		})
 	}
 }

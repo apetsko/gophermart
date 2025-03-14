@@ -10,6 +10,7 @@ import (
 
 	"github.com/apetsko/gophermart/internal/handlers"
 	"github.com/apetsko/gophermart/internal/logging"
+	"github.com/apetsko/gophermart/internal/mocks"
 	"github.com/apetsko/gophermart/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -17,14 +18,15 @@ import (
 )
 
 func TestWithdrawalsHandler(t *testing.T) {
-	mockStorage := new(MockStorage)
+	mockStorage := new(mocks.Storage)
 	logger, _ := logging.NewLogger(zapcore.DebugLevel)
 	h := &handlers.URLHandler{
 		Logger:  logger,
 		Storage: mockStorage,
 	}
+
 	now := time.Now()
-	cases := []struct {
+	tests := []struct {
 		name           string
 		userID         string
 		mockResponse   []models.Withdraw
@@ -52,8 +54,8 @@ func TestWithdrawalsHandler(t *testing.T) {
 			name:   "Successful withdrawals retrieval",
 			userID: "1",
 			mockResponse: []models.Withdraw{
-				{Order: "79927398713", Sum: 50, ProcessedAt: &now},
-				{Order: "123456789", Sum: 20, ProcessedAt: &now},
+				{Order: "79927398713", SumMinor: 5000, ProcessedAt: &now},
+				{Order: "123456789", SumMinor: 2000, ProcessedAt: &now},
 			},
 			expectedStatus: http.StatusOK,
 		},
@@ -65,15 +67,18 @@ func TestWithdrawalsHandler(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			mockStorage.ExpectedCalls = nil
 
-			mockStorage.On("Withdrawals", mock.Anything, mock.Anything).Return(tc.mockResponse, tc.mockError)
+			mockStorage.On("Withdrawals",
+				mock.Anything,
+				mock.Anything).
+				Return(tt.mockResponse, tt.mockError)
 
-			req := httptest.NewRequest(http.MethodGet, "/withdrawals", nil)
-			if tc.userID != "" {
-				req.Header.Set("userID", tc.userID)
+			req := httptest.NewRequest(http.MethodGet, "/api/user/withdrawals", nil)
+			if tt.userID != "" {
+				req.Header.Set("userID", tt.userID)
 			}
 			w := httptest.NewRecorder()
 			handler := handlers.WithdrawalsHandler(h)
@@ -82,20 +87,19 @@ func TestWithdrawalsHandler(t *testing.T) {
 			resp := w.Result()
 			defer resp.Body.Close()
 
-			assert.Equal(t, tc.expectedStatus, resp.StatusCode)
+			assert.Equal(t, tt.expectedStatus, resp.StatusCode)
 
-			if tc.expectedStatus == http.StatusOK {
+			if tt.expectedStatus == http.StatusOK {
 				var withdrawals []models.Withdraw
 				err := json.NewDecoder(resp.Body).Decode(&withdrawals)
 				assert.NoError(t, err)
 
-				assert.Equal(t, len(tc.mockResponse), len(withdrawals))
+				assert.Equal(t, len(tt.mockResponse), len(withdrawals))
 
-				for i := range tc.mockResponse {
-					assert.Equal(t, tc.mockResponse[i].Order, withdrawals[i].Order)
-					assert.Equal(t, tc.mockResponse[i].Sum, withdrawals[i].Sum)
-					// Сравниваем время с погрешностью в миллисекунду
-					assert.WithinDuration(t, *tc.mockResponse[i].ProcessedAt, *withdrawals[i].ProcessedAt, time.Millisecond)
+				for i := range tt.mockResponse {
+					assert.Equal(t, tt.mockResponse[i].Order, withdrawals[i].Order)
+					assert.Equal(t, tt.mockResponse[i].SumMinor/100, withdrawals[i].SumMinor)
+					assert.WithinDuration(t, *tt.mockResponse[i].ProcessedAt, *withdrawals[i].ProcessedAt, time.Millisecond)
 				}
 			}
 		})

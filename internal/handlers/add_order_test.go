@@ -9,6 +9,7 @@ import (
 
 	"github.com/apetsko/gophermart/internal/handlers"
 	"github.com/apetsko/gophermart/internal/logging"
+	"github.com/apetsko/gophermart/internal/mocks"
 	"github.com/apetsko/gophermart/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -70,34 +71,34 @@ func TestAddOrderHandler(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			logger, _ := logging.NewLogger(zapcore.DebugLevel)
-			mockStorage := new(MockStorage)
+			mockStorage := new(mocks.Storage)
 
 			h := &handlers.URLHandler{
 				Storage: mockStorage,
 				Logger:  logger,
 			}
 
-			if tc.mockError != nil {
-				mockStorage.On("AddOrder", mock.Anything, mock.AnythingOfType("int64"), tc.order).
-					Return(tc.mockError)
+			if tt.mockError != nil {
+				mockStorage.On("AddOrder", mock.Anything, mock.AnythingOfType("int64"), tt.order).
+					Return(tt.mockError)
 			} else {
-				mockStorage.On("AddOrder", mock.Anything, mock.AnythingOfType("int64"), tc.order).
+				mockStorage.On("AddOrder", mock.Anything, mock.AnythingOfType("int64"), tt.order).
 					Return(nil)
 			}
 
-			req := httptest.NewRequest(http.MethodPost, "/add_order", bytes.NewBufferString(tc.order))
-			if tc.userID != "" {
-				req.Header.Set("userID", tc.userID)
+			req := httptest.NewRequest(http.MethodPost, "/api/user/orders", bytes.NewBufferString(tt.order))
+			if tt.userID != "" {
+				req.Header.Set("userID", tt.userID)
 			}
 			w := httptest.NewRecorder()
 			handlers.AddOrderHandler(h)(w, req)
 
 			resp := w.Result()
 			defer resp.Body.Close()
-			assert.Equal(t, tc.expectedStatus, resp.StatusCode)
+			assert.Equal(t, tt.expectedStatus, resp.StatusCode)
 		})
 	}
 }

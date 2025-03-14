@@ -33,7 +33,7 @@ func ListOrdersHandler(h *URLHandler) func(http.ResponseWriter, *http.Request) {
 
 		h.Logger.Debug(fmt.Sprintf("UserID: %v", userID))
 
-		lo, err := h.Storage.ListOrders(ctx, userID)
+		entriesMinor, err := h.Storage.ListOrders(ctx, userID)
 		if err != nil {
 			if errors.Is(err, models.ErrOrderNotFound) {
 				h.Logger.Debug(err.Error())
@@ -45,13 +45,22 @@ func ListOrdersHandler(h *URLHandler) func(http.ResponseWriter, *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-
-		h.Logger.Debugf("OrderList: %v", lo)
+		var entriesResp []models.UserOrderEntryResponse
+		for _, entry := range entriesMinor {
+			entryResp := models.UserOrderEntryResponse{
+				Number:     entry.Number,
+				Status:     entry.Status,
+				Accrual:    float64(*entry.AccrualMinor) / 100.0,
+				UploadedAt: entry.UploadedAt,
+			}
+			entriesResp = append(entriesResp, entryResp)
+		}
+		h.Logger.Debug("UserID", userID, "OrderList", entriesResp)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 
-		if err = json.NewEncoder(w).Encode(lo); err != nil {
+		if err = json.NewEncoder(w).Encode(entriesResp); err != nil {
 			h.Logger.Error("failed to encode response", "error", err)
 		}
 	}

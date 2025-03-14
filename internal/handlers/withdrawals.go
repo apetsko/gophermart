@@ -31,24 +31,34 @@ func WithdrawalsHandler(h *URLHandler) func(http.ResponseWriter, *http.Request) 
 			return
 		}
 
-		h.Logger.Debug(fmt.Sprintf("UserID: %v", userID))
-
 		ww, err := h.Storage.Withdrawals(ctx, userID)
 		if err != nil {
 			status := http.StatusBadRequest
 
 			if errors.Is(err, models.ErrWithdrawalsNotFound) {
 				status = http.StatusNoContent
+				h.Logger.Debug("withdrawals not found", "userID", userID)
 			}
 
-			h.Logger.Error(err.Error())
+			h.Logger.Error(err.Error(), "userID", userID)
 			w.WriteHeader(status)
 			return
 		}
 
+		var wwr []models.WithdrawRequest
+		for _, w := range ww {
+			wr := models.WithdrawRequest{
+				Order:       w.Order,
+				Sum:         float64(w.SumMinor) / 100.0,
+				ProcessedAt: w.ProcessedAt,
+			}
+			wwr = append(wwr, wr)
+		}
+
+		h.Logger.Debug("withdrawals found", "withdrawals", ww, "userID", userID)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		if err = json.NewEncoder(w).Encode(ww); err != nil {
+		if err = json.NewEncoder(w).Encode(wwr); err != nil {
 			h.Logger.Error("failed to encode response", "error", err)
 		}
 	}

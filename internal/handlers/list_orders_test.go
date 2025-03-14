@@ -11,6 +11,7 @@ import (
 
 	"github.com/apetsko/gophermart/internal/handlers"
 	"github.com/apetsko/gophermart/internal/logging"
+	"github.com/apetsko/gophermart/internal/mocks"
 	"github.com/apetsko/gophermart/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -18,7 +19,7 @@ import (
 )
 
 func TestListOrdersHandler(t *testing.T) {
-	mockStorage := new(MockStorage)
+	mockStorage := new(mocks.Storage)
 	logger, _ := logging.NewLogger(zapcore.DebugLevel)
 	h := &handlers.URLHandler{
 		Logger:  logger,
@@ -26,8 +27,8 @@ func TestListOrdersHandler(t *testing.T) {
 	}
 
 	fixedTime := time.Date(2025, 3, 5, 12, 0, 0, 0, time.UTC)
-
-	cases := []struct {
+	accVal := int64(123)
+	tests := []struct {
 		name           string
 		userIDHeader   string
 		mockResponse   []models.UserOrderEntry
@@ -68,29 +69,30 @@ func TestListOrdersHandler(t *testing.T) {
 			userIDHeader: "1",
 			mockResponse: []models.UserOrderEntry{
 				{
-					Number:     "12345",
-					Status:     "PROCESSED",
-					Accrual:    nil,
-					UploadedAt: fixedTime,
+					Number:       "12345",
+					Status:       "PROCESSED",
+					AccrualMinor: &accVal,
+					UploadedAt:   fixedTime,
 				},
 			},
 			mockError:      nil,
 			expectedStatus: http.StatusOK,
-			expectedBody:   `[{"number":"12345","status":"PROCESSED","uploaded_at":"2025-03-05T12:00:00Z"}]`,
+			expectedBody:   `[{"accrual":1.23,"number":"12345","status":"PROCESSED","uploaded_at":"2025-03-05T12:00:00Z"}]`,
 		},
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			mockStorage.ExpectedCalls = nil // Очистка предыдущих моков
-			if tc.userIDHeader != "" {
-				userID, _ := strconv.ParseInt(tc.userIDHeader, 10, 64)
-				mockStorage.On("ListOrders", mock.Anything, userID).Return(tc.mockResponse, tc.mockError)
-			}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockStorage.ExpectedCalls = nil
 
-			req := httptest.NewRequest(http.MethodGet, "/orders", nil)
-			if tc.userIDHeader != "" {
-				req.Header.Set("userID", tc.userIDHeader)
+			req := httptest.NewRequest(http.MethodGet, "/api/user/orders", nil)
+			if tt.userIDHeader != "" {
+				req.Header.Set("userID", tt.userIDHeader)
+
+				userID, err := strconv.ParseInt(tt.userIDHeader, 10, 64)
+				if err == nil {
+					mockStorage.On("ListOrders", mock.Anything, userID).Return(tt.mockResponse, tt.mockError)
+				}
 			}
 
 			w := httptest.NewRecorder()
@@ -102,13 +104,15 @@ func TestListOrdersHandler(t *testing.T) {
 
 			body, _ := io.ReadAll(resp.Body)
 
-			assert.Equal(t, tc.expectedStatus, resp.StatusCode)
+			assert.Equal(t, tt.expectedStatus, resp.StatusCode)
 
-			if tc.expectedBody != "" {
-				assert.JSONEq(t, tc.expectedBody, string(body))
+			if tt.expectedBody != "" {
+				assert.JSONEq(t, tt.expectedBody, string(body))
 			} else {
-				assert.Equal(t, tc.expectedBody, string(body))
+				assert.Equal(t, tt.expectedBody, string(body))
 			}
+
+			mockStorage.AssertExpectations(t)
 		})
 	}
 }

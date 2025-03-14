@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/apetsko/gophermart/internal/models"
 )
 
 func BalanceHandler(h *URLHandler) func(http.ResponseWriter, *http.Request) {
@@ -30,16 +32,21 @@ func BalanceHandler(h *URLHandler) func(http.ResponseWriter, *http.Request) {
 
 		h.Logger.Debug(fmt.Sprintf("UserID: %v", userID))
 
-		balance, err := h.Storage.Balance(ctx, userID)
+		balanceMinor, err := h.Storage.Balance(ctx, userID)
 		if err != nil {
 			h.Logger.Error(err.Error())
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
+		ubr := models.UserBalanceResponse{
+			Current:   float64(balanceMinor.CurrentMinor) / 100.0,
+			Withdrawn: float64(balanceMinor.WithdrawnMinor) / 100.0,
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		if err = json.NewEncoder(w).Encode(balance); err != nil {
+		if err = json.NewEncoder(w).Encode(ubr); err != nil {
 			h.Logger.Error("failed to encode response", "error", err)
 		}
 	}
